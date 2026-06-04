@@ -1,0 +1,47 @@
+name: Deploy Lambda
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy-lambda:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy or update Lambda
+        run: |
+          if aws lambda get-function --function-name chatbot-lambda >/dev/null 2>&1; then
+            echo "Function exists, updating Lambda image..."
+            retries=12
+            until aws lambda update-function-code \
+              --function-name chatbot-lambda \
+              --image-uri ${{ secrets.ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPO_NAME }}:latest; do
+              if [ "$retries" -le 0 ]; then
+                echo "Update failed after retries."
+                exit 1
+              fi
+              echo "Update in progress or locked, retrying in 10 seconds..."
+              retries=$((retries - 1))
+              sleep 10
+            done
+            aws lambda wait function-updated --function-name chatbot-lambda
+            aws lambda update-function-configuration \
+              --function-name chatbot-lambda \
+              --timeout 120 \
+              --memory-size 3000
+          else
+            echo "Function does not exist, creating Lambda..."
+            aws lambda create-function \
+              --function-name chatbot-lambda \
+              --package-type Image \
+              --code ImageUri=${{ secrets.ECR_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPO_NAME }}:latest \
+              --role ${{ secrets.LAMBDA_ROLE_ARN }} \
+              --timeout 120 \
+              --memory-size 3000
+          fi

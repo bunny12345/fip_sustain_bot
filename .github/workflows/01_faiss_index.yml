@@ -1,0 +1,35 @@
+name: Build FAISS Vector Index
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-faiss:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_REGION: ${{ secrets.AWS_REGION }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run FAISS build
+        run: python main.py
+
+      - name: Archive FAISS folder
+        run: tar -czvf faiss_index.tar.gz -C faiss_index .
+
+      - name: Upload FAISS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: faiss_index
+          path: faiss_index.tar.gz
