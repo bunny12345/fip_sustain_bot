@@ -10,12 +10,12 @@ variable "project" {
 
 variable "s3_bucket_faiss" {
   type    = string
-  default = "faissindexingirlcollege"
+  default = "faissindexingfip"
 }
 
 variable "s3_bucket_docs" {
   type    = string
-  default = "irlcolleges"
+  default = "fipsustain"
 }
 
 variable "s3_key_faiss" {

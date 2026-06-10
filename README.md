@@ -58,7 +58,7 @@ Edit the document path in `main.py`:
 
 ```python
 loader = S3FileLoader(
-    bucket="irlcolleges",
+    bucket="fipsustain",
     key="YOUR_NEW_DOCUMENT.pdf"  # ← Change this
 )
 ```
@@ -75,12 +75,12 @@ The FAISS index must match your embedding model (Cohere):
 Replace the existing file in S3:
 
 ```bash
-aws s3 cp faiss_index.tar.gz s3://faissindexingirlcollege/faiss_index.tar.gz \
+aws s3 cp faiss_index.tar.gz s3://faissindexingfip/faiss_index.tar.gz \
   --region eu-west-1
 ```
 
 Or use AWS Console:
-1. Go to S3 bucket `faissindexingirlcollege`
+1. Go to S3 bucket `faissindexingfip`
 2. Delete old `faiss_index.tar.gz`
 3. Upload new `faiss_index.tar.gz`
 
@@ -114,8 +114,8 @@ test_event = {
 ## AWS Configuration
 
 Required:
-- S3 bucket: `faissindexingirlcollege` (FAISS index storage)
-- S3 bucket: `irlcolleges` (Source documents)
+- S3 bucket: `faissindexingfip` (FAISS index storage)
+- S3 bucket: `fipsustain` (Source documents)
 - Lambda IAM role with:
   - S3 read access
   - Bedrock read access
@@ -138,7 +138,7 @@ Required:
 ## Environment Variables
 
 - `AWS_REGION`: `eu-west-1`
-- `S3_BUCKET`: `faissindexingirlcollege`
+- `S3_BUCKET`: `faissindexingfip`
 - `S3_KEY`: `faiss_index.tar.gz`
 - `EMBED_MODEL_ID`: `cohere.embed-v4:0`
 - `LLM_MODEL_ID`: `anthropic.claude-3-sonnet-20240229-v1:0`

@@ -9,7 +9,7 @@ from langchain_aws.embeddings import BedrockEmbeddings
 from langchain_core.prompts import PromptTemplate
 
 # Configs
-S3_BUCKET = "faissindexingirlcollege"
+S3_BUCKET = "faissindexingfip"
 S3_KEY = "faiss_index.tar.gz"
 AWS_REGION = "eu-west-1"
 

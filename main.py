@@ -8,7 +8,7 @@ from langchain_community.document_loaders import S3FileLoader
 from langchain_aws import BedrockEmbeddings
 def load_documents():
     print("🔹 Loading documents from S3...")
-    loader = S3FileLoader(bucket="irlcolleges", key="SUSTAIN-EU_Module 7_Carbon Accounting and Reporting_SRC_V2 (1).pdf")  # Replace these
+    loader = S3FileLoader(bucket="fipsustain", key="SUSTAIN-EU_Module 7_Carbon Accounting and Reporting_SRC_V2 (1).pdf")  # Replace these
     return loader.load()
 
 def create_embedder():
