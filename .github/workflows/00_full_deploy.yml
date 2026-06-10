@@ -1,0 +1,141 @@
+name: Full Deployment
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-faiss:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build FAISS index
+        run: |
+          python main.py
+          tar -czvf faiss_index.tar.gz -C faiss_index .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Upload FAISS index to S3
+        run: |
+          aws s3 cp faiss_index.tar.gz s3://${{ secrets.FAISS_S3_BUCKET }}/faiss_index.tar.gz
+
+  infra:
+    needs: build-faiss
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Initialize Terraform
+        working-directory: terraform
+        run: terraform init
+
+      - name: Apply Terraform
+        working-directory: terraform
+        run: terraform apply -auto-approve
+
+      - name: Export Terraform outputs
+        id: tf_outputs
+        working-directory: terraform
+        run: |
+          echo "ecr_repo_uri=$(terraform output -raw ecr_repository_uri)" >> $GITHUB_OUTPUT
+          echo "lambda_role_arn=$(terraform output -raw lambda_role_arn)" >> $GITHUB_OUTPUT
+          echo "api_endpoint=$(terraform output -raw api_endpoint)" >> $GITHUB_OUTPUT
+
+  build-image:
+    needs: infra
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image
+        run: |
+          docker build -t chatbot-lambda .
+          docker tag chatbot-lambda:latest ${{ needs.infra.outputs.ecr_repo_uri }}:latest
+
+      - name: Push Docker image to ECR
+        run: |
+          docker push ${{ needs.infra.outputs.ecr_repo_uri }}:latest
+
+  deploy-lambda:
+    needs: build-image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy or update Lambda function
+        run: |
+          FUNCTION_NAME="chatbot-lambda"
+          IMAGE_URI="${{ needs.infra.outputs.ecr_repo_uri }}:latest"
+          ROLE_ARN="${{ needs.infra.outputs.lambda_role_arn }}"
+
+          if aws lambda get-function --function-name "$FUNCTION_NAME" >/dev/null 2>&1; then
+            echo "Function exists, updating Lambda image..."
+            aws lambda update-function-code \
+              --function-name "$FUNCTION_NAME" \
+              --image-uri "$IMAGE_URI"
+            aws lambda wait function-updated --function-name "$FUNCTION_NAME"
+            aws lambda update-function-configuration \
+              --function-name "$FUNCTION_NAME" \
+              --timeout 120 \
+              --memory-size 3000
+          else
+            echo "Function does not exist, creating Lambda..."
+            aws lambda create-function \
+              --function-name "$FUNCTION_NAME" \
+              --package-type Image \
+              --code ImageUri="$IMAGE_URI" \
+              --role "$ROLE_ARN" \
+              --timeout 120 \
+              --memory-size 3000
+          fi
+
+      - name: Output API endpoint
+        run: |
+          echo "Chatbot API endpoint: ${{ needs.infra.outputs.api_endpoint }}"
