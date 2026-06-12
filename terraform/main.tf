@@ -9,6 +9,27 @@ data "aws_iam_policy_document" "lambda_assume_role" {
   }
 }
 
+resource "aws_s3_bucket" "faiss" {
+  bucket = var.s3_bucket_faiss
+  acl    = "private"
+
+  server_side_encryption_configuration {
+    rule {
+      apply_server_side_encryption_by_default {
+        sse_algorithm = "AES256"
+      }
+    }
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "faiss_block" {
+  bucket = aws_s3_bucket.faiss.id
+  block_public_acls       = true
+  ignore_public_acls      = true
+  block_public_policy     = true
+  restrict_public_buckets = true
+}
+
 resource "aws_ecr_repository" "chatbot_lambda" {
   name                 = var.ecr_repo_name
   image_tag_mutability = "MUTABLE"
