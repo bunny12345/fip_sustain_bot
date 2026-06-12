@@ -23,7 +23,7 @@ resource "aws_s3_bucket" "faiss" {
 }
 
 resource "aws_s3_bucket_public_access_block" "faiss_block" {
-  bucket = aws_s3_bucket.faiss.id
+  bucket                  = aws_s3_bucket.faiss.id
   block_public_acls       = true
   ignore_public_acls      = true
   block_public_policy     = true
