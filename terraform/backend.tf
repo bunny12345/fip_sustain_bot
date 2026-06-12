@@ -1,8 +1,8 @@
 terraform {
   backend "s3" {
-    bucket         = "chatvista-terraform-state"
+    bucket         = "fipbot-terraform-state"
     key            = "terraform.tfstate"
     region         = "eu-west-1"
-    dynamodb_table = "chatvista-terraform-lock"
+    dynamodb_table = "fipbot-terraform-state-lock"
   }
 }

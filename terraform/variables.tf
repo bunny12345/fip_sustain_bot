@@ -5,7 +5,7 @@ variable "aws_region" {
 
 variable "project" {
   type    = string
-  default = "chatvista-ai"
+  default = "fip_sustain"
 }
 
 variable "s3_bucket_faiss" {
