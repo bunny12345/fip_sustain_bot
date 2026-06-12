@@ -29,6 +29,8 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+          FAISS_S3_BUCKET: ${{ secrets.FAISS_S3_BUCKET }}
+          FAISS_S3_KEY: ${{ secrets.FAISS_S3_KEY }}
 
       - name: Upload FAISS index to S3
         run: |
