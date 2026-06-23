@@ -84,7 +84,7 @@ def build_prompt(docs, question):
     template = """You are a concise and helpful assistant.
 - Answer briefly and clearly using no more than 2 short paragraphs.
 - Avoid repetition or over-explaining.
-- Limit your response to 300 tokens maximum."
+- Limit your response to 100 tokens maximum."
 Use the following context to answer the question.
 
 Context:
