@@ -22,6 +22,14 @@ LLM_MODEL_ID = "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
 # Simple in-memory cache for question -> answer
 CACHE = {}
 
+def get_cors_headers():
+    """Return CORS headers for responses"""
+    return {
+        "Access-Control-Allow-Origin": "https://learninggateway.eu",
+        "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+        "Access-Control-Allow-Methods": "OPTIONS,POST"
+    }
+
 def download_and_extract_faiss():
     s3 = boto3.client("s3", region_name=AWS_REGION)
     response = s3.get_object(Bucket=S3_BUCKET, Key=S3_KEY)
@@ -106,6 +114,8 @@ def call_llm(prompt):
     return model.invoke(prompt)
 
 def lambda_handler(event, context):
+    cors_headers = get_cors_headers()
+    
     try:
         print("Received event:", json.dumps(event))
 
@@ -113,11 +123,7 @@ def lambda_handler(event, context):
         if event.get("httpMethod") == "OPTIONS":
             return {
                 "statusCode": 200,
-                "headers": {
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-                    "Access-Control-Allow-Methods": "OPTIONS,POST"
-                },
+                "headers": cors_headers,
                 "body": json.dumps({"message": "CORS preflight success"})
             }
 
@@ -129,7 +135,7 @@ def lambda_handler(event, context):
         if not question:
             return {
                 "statusCode": 400,
-                "headers": {"Access-Control-Allow-Origin": "*"},
+                "headers": cors_headers,
                 "body": json.dumps({"error": "Missing 'question'"})
             }
 
@@ -139,11 +145,7 @@ def lambda_handler(event, context):
             cached_response = CACHE[question]
             return {
                 "statusCode": 200,
-                "headers": {
-                    "Access-Control-Allow-Origin": "*",
-                    "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-                    "Access-Control-Allow-Methods": "OPTIONS,POST"
-                },
+                "headers": cors_headers,
                 "body": json.dumps(cached_response)
             }
 
@@ -203,11 +205,7 @@ def lambda_handler(event, context):
 
         return {
             "statusCode": 200,
-            "headers": {
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
-                "Access-Control-Allow-Methods": "OPTIONS,POST"
-            },
+            "headers": cors_headers,
             "body": json.dumps(response_body)
         }
 
@@ -218,7 +216,7 @@ def lambda_handler(event, context):
         traceback.print_exc()
         return {
             "statusCode": 500,
-            "headers": {"Access-Control-Allow-Origin": "*"},
+            "headers": get_cors_headers(),
             "body": json.dumps({"error": error_message})
         }
 
