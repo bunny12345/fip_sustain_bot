@@ -139,6 +139,14 @@ resource "aws_lambda_function" "chatbot" {
 resource "aws_apigatewayv2_api" "chatbot_http_api" {
   name          = var.api_name
   protocol_type = "HTTP"
+
+  cors_configuration {
+    allow_origins  = ["https://learninggateway.eu"]    # restrict to your origin
+    allow_methods  = ["POST", "OPTIONS"]               # include POST and OPTIONS
+    allow_headers  = ["Content-Type", "Authorization"] # headers your client sends
+    expose_headers = ["Content-Type"]
+    max_age        = 3600
+  }
 }
 
 resource "aws_apigatewayv2_integration" "lambda_integration" {
