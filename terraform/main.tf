@@ -142,17 +142,13 @@ resource "aws_apigatewayv2_api" "chatbot_http_api" {
   cors_configuration {
     allow_headers = ["Content-Type", "X-Amz-Date", "Authorization", "X-Api-Key", "X-Amz-Security-Token"]
     allow_methods = ["OPTIONS", "POST"]
-    allow_origins = ["https://learninggateway.eu", "https://sustaineu-platform.learninggateway.eu", "https://chatvistaai.com"]
+    allow_origins = [
+      "https://learninggateway.eu",
+      "https://sustaineu-platform.learninggateway.eu",
+      "https://chatvistaai.com"
+    ]
     expose_headers = ["Content-Type"]
     max_age = 3600
-  }
-
-  cors_configuration {
-    allow_origins  = ["https://learninggateway.eu"]    # restrict to your origin
-    allow_methods  = ["POST", "OPTIONS"]               # include POST and OPTIONS
-    allow_headers  = ["Content-Type", "Authorization"] # headers your client sends
-    expose_headers = ["Content-Type"]
-    max_age        = 3600
   }
 }
 
