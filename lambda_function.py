@@ -22,10 +22,27 @@ LLM_MODEL_ID = "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
 # Simple in-memory cache for question -> answer
 CACHE = {}
 
-def get_cors_headers():
-    """Return CORS headers for responses"""
+def get_cors_headers(event=None):
+    """Return CORS headers for responses.
+
+    If an Origin header is present in the `event`, return that origin
+    when it is in the allowlist. Otherwise fall back to the default origin.
+    """
+    allowed_origins = {
+        "https://learninggateway.eu",
+        "https://sustaineu-platform.learninggateway.eu",
+        "https://chatvistaai.com",
+    }
+
+    origin = None
+    if event:
+        headers = event.get("headers") or {}
+        origin = headers.get("origin") or headers.get("Origin")
+
+    allowed_origin = origin if origin in allowed_origins else "https://learninggateway.eu"
+
     return {
-        "Access-Control-Allow-Origin": "https://learninggateway.eu",
+        "Access-Control-Allow-Origin": allowed_origin,
         "Access-Control-Allow-Headers": "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
         "Access-Control-Allow-Methods": "OPTIONS,POST"
     }
@@ -114,7 +131,7 @@ def call_llm(prompt):
     return model.invoke(prompt)
 
 def lambda_handler(event, context):
-    cors_headers = get_cors_headers()
+    cors_headers = get_cors_headers(event)
     
     try:
         print("Received event:", json.dumps(event))
@@ -216,7 +233,7 @@ def lambda_handler(event, context):
         traceback.print_exc()
         return {
             "statusCode": 500,
-            "headers": get_cors_headers(),
+            "headers": get_cors_headers(event),
             "body": json.dumps({"error": error_message})
         }
 
