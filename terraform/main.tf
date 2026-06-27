@@ -148,7 +148,7 @@ resource "aws_apigatewayv2_api" "chatbot_http_api" {
       "https://chatvistaai.com"
     ]
     expose_headers = ["Content-Type"]
-    max_age = 3600
+    max_age        = 3600
   }
 }
 
