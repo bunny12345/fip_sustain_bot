@@ -342,24 +342,11 @@ def lambda_handler(event, context):
                 }
 
         # Cache the answer
-                        print("Docs loaded:", len(docs))
-                        print("Doc sources:", [doc.metadata.get("source", "unknown") for doc in docs])
-                        print("Focus terms:", focus_terms)
-                        print("Module requested:", module_num)
-                        print("Acronyms:", acronyms)
-                        print("Missing focus terms:", sorted(missing_terms))
+        CACHE[question] = response_body
 
-                        # Conditional detailed debug logging controlled by environment variable
-                        if os.getenv("DEBUG_RETRIEVAL") == "1":
-                            print("--- Retrieval debug: top docs details ---")
-                            for i, d in enumerate(docs, start=1):
-                                src = d.metadata.get("source", "unknown")
-                                excerpt = (d.page_content[:300] + '...') if len(d.page_content) > 300 else d.page_content
-                                overlap = lexical_overlap_score(d, focus_terms)
-                                contains_acronyms = any(re.search(rf"\b{re.escape(a)}\b", d.page_content, flags=re.IGNORECASE) for a in (acronyms if 'acronyms' in locals() else []))
-                                print(f"Doc #{i} source={src} overlap={overlap} contains_acronyms={contains_acronyms}")
-                                print("Excerpt:\n", excerpt)
-                            print("--- end retrieval debug ---")
+        return {
+            "statusCode": 200,
+            "headers": cors_headers,
             "body": json.dumps(response_body)
         }
 
