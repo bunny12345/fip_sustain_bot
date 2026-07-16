@@ -10,8 +10,8 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
-      FAISS_S3_BUCKET: ${{ secrets.FAISS_S3_BUCKET }}
-      FAISS_S3_KEY: ${{ secrets.FAISS_S3_KEY }}
+      DOCUMENT_S3_BUCKET: ${{ secrets.DOCUMENT_S3_BUCKET }}
+      DOCUMENT_S3_KEY: ${{ secrets.DOCUMENT_S3_KEY }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
@@ -35,8 +35,8 @@ jobs:
         run: |
           echo "Checking caller identity..."
           aws sts get-caller-identity || (echo "No AWS credentials available" && exit 1)
-          echo "Listing sample objects in s3://fipsustain (first 20)"
-          aws s3 ls s3://fipsustain --recursive | head -n 20 || true
+          echo "Listing sample objects in s3://${{ secrets.DOCUMENT_S3_BUCKET }} (first 20)"
+          aws s3 ls s3://${{ secrets.DOCUMENT_S3_BUCKET }} --recursive | head -n 20 || true
 
       - name: Run FAISS build
         run: python main.py

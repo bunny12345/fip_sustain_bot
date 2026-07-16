@@ -1,14 +1,35 @@
-import boto3
 import os
-import faiss
+import sys
+
 from dotenv import load_dotenv
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS
-from langchain_community.document_loaders import S3FileLoader
 from langchain_aws import BedrockEmbeddings
+from langchain_community.document_loaders import S3FileLoader
+from langchain_community.vectorstores import FAISS
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+
+load_dotenv()
+
+
 def load_documents():
-    bucket = os.getenv("FAISS_S3_BUCKET", "irlcolleges")
-    key = os.getenv("FAISS_S3_KEY", "SUSTAIN EU_English content_final version.pdf")
+    bucket = (
+        os.getenv("DOCUMENT_S3_BUCKET")
+        or os.getenv("FAISS_SOURCE_S3_BUCKET")
+        or os.getenv("FAISS_S3_BUCKET")
+        or "irlcolleges"
+    )
+    key = (
+        os.getenv("DOCUMENT_S3_KEY")
+        or os.getenv("FAISS_SOURCE_S3_KEY")
+        or os.getenv("FAISS_S3_KEY")
+        or "SUSTAIN EU_English content_final version.pdf"
+    )
+
+    if key.endswith(".tar.gz"):
+        raise ValueError(
+            "DOCUMENT_S3_KEY must point to the PDF file, not faiss_index.tar.gz"
+        )
+
     print(f"🔹 Loading documents from S3... bucket={bucket} key={key}")
     loader = S3FileLoader(bucket=bucket, key=key)
     return loader.load()
@@ -41,3 +62,4 @@ if __name__ == "__main__":
         print("✅ FAISS vector store saved locally to `faiss_index/`")
     except Exception as e:
         print(f"❌ Error: {e}")
+        sys.exit(1)
