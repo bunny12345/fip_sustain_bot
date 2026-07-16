@@ -4,6 +4,7 @@ import json
 import tarfile
 import tempfile
 import traceback
+import re
 import boto3
 from langchain_community.vectorstores import FAISS
 from langchain_aws.embeddings import BedrockEmbeddings
@@ -21,6 +22,16 @@ LLM_MODEL_ID = "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 # Simple in-memory cache for question -> answer
 CACHE = {}
+
+STOPWORDS = {
+    "the", "a", "an", "and", "or", "is", "are", "to", "for", "in", "on", "of",
+    "what", "where", "when", "how", "can", "i", "we", "you", "about", "this", "that"
+}
+
+RESOURCE_LINKS = {
+    "sdg": "https://sdgs.un.org/goals",
+    "npv": "https://www.investopedia.com/terms/n/npv.asp",
+}
 
 def get_cors_headers(event=None):
     """Return CORS headers for responses.
@@ -106,10 +117,11 @@ def load_vectorstore():
         raise faiss_error
 
 def build_prompt(docs, question):
-    template = """You are a concise and helpful assistant.
-- Answer briefly and clearly using no more than 2 short paragraphs.
-- Avoid repetition or over-explaining.
-- Limit your response to 100 tokens maximum."
+    template = """You are a concise and helpful assistant for an ESE course chatbot.
+- Answer using ONLY the provided context.
+- If the user asks about a specific module/unit, do not invent cross-module mappings.
+- If context is partial, clearly state what is known and unknown.
+- Keep the answer clean and well formatted in short paragraphs or bullets when useful.
 Use the following context to answer the question.
 
 Context:
@@ -122,6 +134,76 @@ Answer:"""
     prompt = PromptTemplate.from_template(template)
     return prompt.format(context=context_text, question=question)
 
+
+def extract_focus_terms(question):
+    """Extract high-signal terms so lexical intent is preserved (e.g., NPV)."""
+    q = question.lower()
+    tokens = re.findall(r"\b[a-z0-9\-]{2,}\b", q)
+    acronyms = set(re.findall(r"\b[A-Z]{2,10}\b", question))
+
+    focus = set()
+    for t in tokens:
+        if t in STOPWORDS:
+            continue
+        # Keep short technical terms like npv, irr, ghg, csrd.
+        if len(t) <= 4 or len(t) >= 6:
+            focus.add(t)
+
+    for a in acronyms:
+        focus.add(a.lower())
+
+    module_match = re.search(r"\b(module|unit)\s*(\d{1,2})\b", q)
+    module_num = module_match.group(2) if module_match else None
+    return sorted(focus), module_num, sorted(a.lower() for a in acronyms)
+
+
+def doc_matches_module(doc, module_num):
+    if not module_num:
+        return True
+    hay = f"{doc.page_content}\n{json.dumps(doc.metadata, ensure_ascii=True)}".lower()
+    return bool(re.search(rf"\b(module|unit)\s*{re.escape(module_num)}\b", hay))
+
+
+def lexical_overlap_score(doc, focus_terms):
+    if not focus_terms:
+        return 0
+    text = doc.page_content.lower()
+    score = 0
+    for t in focus_terms:
+        if re.search(rf"\b{re.escape(t)}\b", text):
+            score += 1
+    return score
+
+
+def fallback_answer(question, docs, module_num, missing_terms):
+    sources = list({doc.metadata.get("source", "unknown") for doc in docs})
+    msg = [
+        "I could not find enough high-confidence context in the indexed course material to answer this precisely.",
+    ]
+    if module_num:
+        msg.append(f"Your question mentions Module/Unit {module_num}, but the retrieved context did not clearly match that module.")
+    if missing_terms:
+        msg.append("Key term(s) not found in retrieved context: " + ", ".join(sorted(missing_terms)) + ".")
+
+    msg.extend([
+        "Suggested next sources:",
+        "- Check the ESE module pages/search for the exact term (e.g., NPV on page 347 if available).",
+        "- Ask the course facilitator for module-specific clarification.",
+        "- Use a trusted external explainer for background, then verify against ESE materials.",
+    ])
+
+    q = question.lower()
+    if "sdg" in q:
+        msg.append(f"- UN SDGs reference: {RESOURCE_LINKS['sdg']}")
+    if "npv" in q:
+        msg.append(f"- NPV reference: {RESOURCE_LINKS['npv']}")
+
+    return {
+        "answer": "\n".join(msg),
+        "sources": sources,
+        "fallback": True,
+    }
+
 def call_llm(prompt):
     model = ChatBedrock(
         model_id=LLM_MODEL_ID,
@@ -129,6 +211,14 @@ def call_llm(prompt):
         provider="anthropic"
     )
     return model.invoke(prompt)
+
+
+def answer_mentions_required_acronyms(answer_text, acronyms):
+    """Prevent acronym drift (e.g., user asks NPV but answer talks about GWP)."""
+    if not acronyms:
+        return True
+    hay = (answer_text or "").lower()
+    return all(a in hay for a in acronyms)
 
 def lambda_handler(event, context):
     cors_headers = get_cors_headers(event)
@@ -187,35 +277,69 @@ def lambda_handler(event, context):
                         f"Embedding dimension mismatch: query vector length {len(query_vec)} does not match FAISS index dimension {vectorstore.index.d}. "
                         "Rebuild your FAISS index with the same embedding model/version."
                     )
-            docs = vectorstore.similarity_search(question, k=4)
+            scored = vectorstore.similarity_search_with_score(question, k=10)
+            focus_terms, module_num, acronyms = extract_focus_terms(question)
+
+            # Filter for explicit module if requested.
+            filtered = [(d, s) for (d, s) in scored if doc_matches_module(d, module_num)]
+            candidates = filtered if filtered else scored
+
+            # Re-rank using lexical overlap first, then semantic distance score.
+            ranked = sorted(
+                candidates,
+                key=lambda x: (-lexical_overlap_score(x[0], focus_terms), x[1])
+            )
+            docs = [d for (d, _) in ranked[:4]]
+
+            all_context = "\n\n".join(d.page_content.lower() for d in docs)
+            # Only use short acronym-like terms as hard confidence gates to avoid false fallback.
+            critical_terms = set(acronyms)
+            missing_terms = {t for t in critical_terms if t not in all_context}
+
             print("Docs loaded:", len(docs))
             print("Doc sources:", [doc.metadata.get("source", "unknown") for doc in docs])
+            print("Focus terms:", focus_terms)
+            print("Module requested:", module_num)
+            print("Acronyms:", acronyms)
+            print("Missing focus terms:", sorted(missing_terms))
         except Exception as search_error:
             print("Doc search failed with error:", str(search_error))
             print("Search error type:", type(search_error).__name__)
             traceback.print_exc()
             raise search_error
 
-        prompt = build_prompt(docs, question)
-        print("Prompt length:", len(prompt))
-        print("Prompt preview:", prompt[:500])
+        # Confidence gate: if key short terms are missing, avoid hallucinated answers.
+        if missing_terms:
+            response_body = fallback_answer(question, docs, module_num, missing_terms)
+        else:
+            prompt = build_prompt(docs, question)
+            print("Prompt length:", len(prompt))
+            print("Prompt preview:", prompt[:500])
 
-        print("About to call LLM...")
-        try:
-            llm_response = call_llm(prompt)
-            print("LLM call successful")
-            print("LLM response type:", type(llm_response))
-            print("LLM response repr:", repr(llm_response)[:1000])
-        except Exception as llm_error:
-            print("LLM call failed with error:", str(llm_error))
-            print("LLM error type:", type(llm_error).__name__)
-            traceback.print_exc()
-            raise llm_error
+            print("About to call LLM...")
+            try:
+                llm_response = call_llm(prompt)
+                print("LLM call successful")
+                print("LLM response type:", type(llm_response))
+                print("LLM response repr:", repr(llm_response)[:1000])
+            except Exception as llm_error:
+                print("LLM call failed with error:", str(llm_error))
+                print("LLM error type:", type(llm_error).__name__)
+                traceback.print_exc()
+                raise llm_error
 
-        response_body = {
-            "answer": getattr(llm_response, 'content', None),
-            "sources": list({doc.metadata.get("source", "unknown") for doc in docs})
-        }
+            answer_text = getattr(llm_response, 'content', None)
+
+            # Secondary safety check after generation.
+            if not answer_mentions_required_acronyms(answer_text, acronyms):
+                response_body = fallback_answer(question, docs, module_num, set(acronyms))
+                response_body["acronym_guard_triggered"] = True
+            else:
+                response_body = {
+                    "answer": answer_text,
+                "sources": list({doc.metadata.get("source", "unknown") for doc in docs}),
+                "fallback": False,
+                }
 
         # Cache the answer
         CACHE[question] = response_body
