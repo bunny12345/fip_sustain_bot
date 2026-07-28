@@ -11,7 +11,8 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       AWS_REGION: ${{ secrets.AWS_REGION }}
       DOCUMENT_S3_BUCKET: ${{ secrets.DOCUMENT_S3_BUCKET }}
-      DOCUMENT_S3_KEY: ${{ secrets.DOCUMENT_S3_KEY }}
+      INDEX_S3_BUCKET: ${{ secrets.INDEX_S3_BUCKET }}
+      BUILD_LANGUAGES: ${{ vars.BUILD_LANGUAGES }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
@@ -38,14 +39,5 @@ jobs:
           echo "Listing sample objects in s3://${{ secrets.DOCUMENT_S3_BUCKET }} (first 20)"
           aws s3 ls s3://${{ secrets.DOCUMENT_S3_BUCKET }} --recursive | head -n 20 || true
 
-      - name: Run FAISS build
+      - name: Build and upload FAISS indexes (all languages)
         run: python main.py
-
-      - name: Archive FAISS folder
-        run: tar -czvf faiss_index.tar.gz -C faiss_index .
-
-      - name: Upload FAISS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: faiss_index
-          path: faiss_index.tar.gz
