@@ -21,7 +21,7 @@ AWS_REGION = os.getenv("AWS_REGION") or "eu-west-1"
 SOURCE_S3_BUCKET = (
     os.getenv("DOCUMENT_S3_BUCKET")
     or os.getenv("FAISS_SOURCE_S3_BUCKET")
-    or "irlcolleges"
+    or "faissindexingfip"
 )
 
 # Bucket where the built FAISS indexes are uploaded (read by the Lambda).
@@ -31,10 +31,10 @@ INDEX_S3_BUCKET = os.getenv("INDEX_S3_BUCKET") or "faissindexingfip"
 # Each key can be overridden with an env var DOCUMENT_S3_KEY_<CODE> (e.g. DOCUMENT_S3_KEY_RO).
 LANGUAGES = {
     "en": "SUSTAIN EU_English content_final version.pdf",
-    "ro": "SUSTAIN EU_Romanian content_final version.pdf",
-    "pt": "SUSTAIN EU_Portuguese content_final version.pdf",
-    "it": "SUSTAIN EU_Italian content_final version.pdf",
-    "de": "SUSTAIN EU_German content_final version.pdf",
+    "ro": "SUSTAIN EU - ESE Course Romanian.pdf",
+    "pt": "SUSTAIN EU - ESE course Portuguese.pdf",
+    "it": "SUSTAIN EU - ESE Course Italian.pdf",
+    "de": "SUSTAIN EU - ESE Course German.pdf",
 }
 
 
