@@ -13,15 +13,41 @@ from langchain_aws import ChatBedrock
 
 # Configs
 S3_BUCKET = "faissindexingfip"
-S3_KEY = "faiss_index.tar.gz"
 AWS_REGION = "eu-west-1"
 
 # Bedrock model IDs
 EMBED_MODEL_ID = "cohere.embed-v4:0"
 LLM_MODEL_ID = "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
 
-# Simple in-memory cache for question -> answer
+# Supported languages: code -> human-readable name used in the prompt.
+SUPPORTED_LANGUAGES = {
+    "en": "English",
+    "ro": "Romanian",
+    "pt": "Portuguese",
+    "it": "Italian",
+    "de": "German",
+}
+DEFAULT_LANGUAGE = "en"
+
+
+def normalize_language(value):
+    """Map an incoming language value to a supported code, defaulting to English."""
+    if not value:
+        return DEFAULT_LANGUAGE
+    code = str(value).strip().lower().replace("_", "-").split("-")[0]
+    return code if code in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
+
+
+def index_key_for(language):
+    """S3 key of the FAISS index archive for a language."""
+    return f"faiss_index_{language}.tar.gz"
+
+
+# In-memory caches, keyed per language so each index/answer set stays isolated.
+# CACHE: {language: {question: response_body}}
 CACHE = {}
+# VECTORSTORE_CACHE: {language: FAISS vectorstore}
+VECTORSTORE_CACHE = {}
 
 STOPWORDS = {
     "the", "a", "an", "and", "or", "is", "are", "to", "for", "in", "on", "of",
@@ -58,9 +84,9 @@ def get_cors_headers(event=None):
         "Access-Control-Allow-Methods": "OPTIONS,POST"
     }
 
-def download_and_extract_faiss():
+def download_and_extract_faiss(s3_key):
     s3 = boto3.client("s3", region_name=AWS_REGION)
-    response = s3.get_object(Bucket=S3_BUCKET, Key=S3_KEY)
+    response = s3.get_object(Bucket=S3_BUCKET, Key=s3_key)
 
     temp_dir = tempfile.mkdtemp()
     tar_data = io.BytesIO(response["Body"].read())
@@ -81,10 +107,16 @@ def download_and_extract_faiss():
 
     return temp_dir
 
-def load_vectorstore():
-    print("Loading vectorstore from S3...")
+def load_vectorstore(language):
+    # Return a cached vectorstore for this language if already loaded.
+    if language in VECTORSTORE_CACHE:
+        print(f"Using cached vectorstore for language '{language}'")
+        return VECTORSTORE_CACHE[language]
+
+    s3_key = index_key_for(language)
+    print(f"Loading vectorstore for language '{language}' from s3://{S3_BUCKET}/{s3_key}")
     try:
-        temp_dir = download_and_extract_faiss()
+        temp_dir = download_and_extract_faiss(s3_key)
         print("FAISS files extracted to:", temp_dir)
         print("Files in temp_dir:", os.listdir(temp_dir))
     except Exception as download_error:
@@ -110,15 +142,17 @@ def load_vectorstore():
         vectorstore = FAISS.load_local(temp_dir, embeddings, allow_dangerous_deserialization=True)
         print("FAISS vectorstore loaded successfully")
         print("FAISS index dimension:", vectorstore.index.d)
+        VECTORSTORE_CACHE[language] = vectorstore
         return vectorstore
     except Exception as faiss_error:
         print("FAISS loading failed:", str(faiss_error))
         traceback.print_exc()
         raise faiss_error
 
-def build_prompt(docs, question):
+def build_prompt(docs, question, language_name="English"):
     template = """You are a concise and helpful assistant for an ESE course chatbot.
 - Answer using ONLY the provided context.
+- Write your entire answer in {language_name}, regardless of the language of the context.
 - If the user asks about a specific module/unit, do not invent cross-module mappings.
 - If context is partial, clearly state what is known and unknown.
 - Keep the answer clean and well formatted in short paragraphs or bullets when useful.
@@ -132,7 +166,7 @@ Question: {question}
 Answer:"""
     context_text = "\n\n".join(doc.page_content for doc in docs)
     prompt = PromptTemplate.from_template(template)
-    return prompt.format(context=context_text, question=question)
+    return prompt.format(context=context_text, question=question, language_name=language_name)
 
 
 def extract_focus_terms(question):
@@ -235,9 +269,17 @@ def lambda_handler(event, context):
             }
 
         question = event.get("question")
-        if not question and "body" in event:
+        language = event.get("language")
+        if "body" in event and event["body"]:
             body = json.loads(event["body"])
-            question = body.get("question")
+            if not question:
+                question = body.get("question")
+            if not language:
+                language = body.get("language")
+
+        language = normalize_language(language)
+        language_name = SUPPORTED_LANGUAGES[language]
+        print(f"Resolved language: {language} ({language_name})")
 
         if not question:
             return {
@@ -246,10 +288,11 @@ def lambda_handler(event, context):
                 "body": json.dumps({"error": "Missing 'question'"})
             }
 
-        # Check cache first
-        if question in CACHE:
+        # Check cache first (per language).
+        lang_cache = CACHE.setdefault(language, {})
+        if question in lang_cache:
             print("Returning cached answer")
-            cached_response = CACHE[question]
+            cached_response = lang_cache[question]
             return {
                 "statusCode": 200,
                 "headers": cors_headers,
@@ -258,7 +301,7 @@ def lambda_handler(event, context):
 
         print("About to load vectorstore...")
         try:
-            vectorstore = load_vectorstore()
+            vectorstore = load_vectorstore(language)
             print("Vectorstore loaded successfully")
         except Exception as vs_error:
             print("Vectorstore loading failed with error:", str(vs_error))
@@ -312,7 +355,7 @@ def lambda_handler(event, context):
         if missing_terms:
             response_body = fallback_answer(question, docs, module_num, missing_terms)
         else:
-            prompt = build_prompt(docs, question)
+            prompt = build_prompt(docs, question, language_name)
             print("Prompt length:", len(prompt))
             print("Prompt preview:", prompt[:500])
 
@@ -341,8 +384,8 @@ def lambda_handler(event, context):
                 "fallback": False,
                 }
 
-        # Cache the answer
-        CACHE[question] = response_body
+        # Cache the answer (per language).
+        lang_cache[question] = response_body
 
         return {
             "statusCode": 200,
