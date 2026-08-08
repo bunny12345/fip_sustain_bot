@@ -18,6 +18,8 @@ AWS_REGION = "eu-west-1"
 # Bedrock model IDs
 EMBED_MODEL_ID = "cohere.embed-v4:0"
 LLM_MODEL_ID = "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "180"))
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.1"))
 
 # Supported languages: code -> human-readable name used in the prompt.
 SUPPORTED_LANGUAGES = {
@@ -48,6 +50,9 @@ def index_key_for(language):
 CACHE = {}
 # VECTORSTORE_CACHE: {language: FAISS vectorstore}
 VECTORSTORE_CACHE = {}
+
+# Reuse Bedrock runtime client across invocations in warm containers.
+BEDROCK_RUNTIME_CLIENT = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 
 STOPWORDS = {
     "the", "a", "an", "and", "or", "is", "are", "to", "for", "in", "on", "of",
@@ -155,7 +160,19 @@ def build_prompt(docs, question, language_name="English"):
 - Write your entire answer in {language_name}, regardless of the language of the context.
 - If the user asks about a specific module/unit, do not invent cross-module mappings.
 - If context is partial, clearly state what is known and unknown.
-- Keep the answer clean and well formatted in short paragraphs or bullets when useful.
+- Keep the answer compact and scannable.
+- Target about 60 to 100 words total.
+- Prefer 1 short intro sentence plus up to 4 short bullet points.
+- Avoid long explanations unless explicitly asked.
+
+Formatting rules (VERY IMPORTANT):
+- Write in plain text only. Do NOT use any Markdown syntax.
+- Do NOT use asterisks (*), underscores (_), backticks (`), or hash symbols (#) for emphasis or headings.
+- Do NOT wrap words in ** or __ to make them bold.
+- For a heading, just write the phrase on its own line followed by a colon (e.g. "Key differences:").
+- For lists, start each item on a new line beginning with "- " (a hyphen and a space) and nothing else.
+- Keep sentences readable and avoid any special formatting characters.
+
 Use the following context to answer the question.
 
 Context:
@@ -241,8 +258,12 @@ def fallback_answer(question, docs, module_num, missing_terms):
 def call_llm(prompt):
     model = ChatBedrock(
         model_id=LLM_MODEL_ID,
-        client=boto3.client("bedrock-runtime", region_name=AWS_REGION),
-        provider="anthropic"
+        client=BEDROCK_RUNTIME_CLIENT,
+        provider="anthropic",
+        model_kwargs={
+            "max_tokens": LLM_MAX_TOKENS,
+            "temperature": LLM_TEMPERATURE,
+        },
     )
     return model.invoke(prompt)
 
@@ -311,16 +332,7 @@ def lambda_handler(event, context):
 
         print("About to search docs...")
         try:
-            if hasattr(vectorstore, 'embeddings'):
-                query_vec = vectorstore.embeddings.embed_query(question)
-                print("Query embedding length:", len(query_vec))
-                print("FAISS index dimension:", vectorstore.index.d)
-                if len(query_vec) != vectorstore.index.d:
-                    raise ValueError(
-                        f"Embedding dimension mismatch: query vector length {len(query_vec)} does not match FAISS index dimension {vectorstore.index.d}. "
-                        "Rebuild your FAISS index with the same embedding model/version."
-                    )
-            scored = vectorstore.similarity_search_with_score(question, k=10)
+            scored = vectorstore.similarity_search_with_score(question, k=6)
             focus_terms, module_num, acronyms = extract_focus_terms(question)
 
             # Filter for explicit module if requested.
@@ -332,7 +344,7 @@ def lambda_handler(event, context):
                 candidates,
                 key=lambda x: (-lexical_overlap_score(x[0], focus_terms), x[1])
             )
-            docs = [d for (d, _) in ranked[:4]]
+            docs = [d for (d, _) in ranked[:3]]
 
             all_context = "\n\n".join(d.page_content.lower() for d in docs)
             # Only use short acronym-like terms as hard confidence gates to avoid false fallback.
