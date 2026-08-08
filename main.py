@@ -34,7 +34,7 @@ LANGUAGES = {
     "ro": "SUSTAIN EU - ESE Course Romanian.pdf",
     "pt": "SUSTAIN EU - ESE course Portuguese.pdf",
     "it": "SUSTAIN EU - ESE Course Italian.pdf",
-    "de": "SUSTAIN EU - ESE Course German.pdf",
+    "de": "SUSTAIN EU_ESE Course_German.pdf",
 }
 
 
