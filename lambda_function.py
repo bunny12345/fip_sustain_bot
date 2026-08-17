@@ -165,13 +165,13 @@ def build_prompt(docs, question, language_name="English"):
 - Prefer 1 short intro sentence plus up to 4 short bullet points.
 - Avoid long explanations unless explicitly asked.
 
-Formatting rules (VERY IMPORTANT):
-- Write in plain text only. Do NOT use any Markdown syntax.
-- Do NOT use asterisks (*), underscores (_), backticks (`), or hash symbols (#) for emphasis or headings.
-- Do NOT wrap words in ** or __ to make them bold.
-- For a heading, just write the phrase on its own line followed by a colon (e.g. "Key differences:").
-- For lists, start each item on a new line beginning with "- " (a hyphen and a space) and nothing else.
-- Keep sentences readable and avoid any special formatting characters.
+# Formatting rules (VERY IMPORTANT):
+# - Write in plain text only. Do NOT use any Markdown syntax.
+# - Do NOT use asterisks (*), underscores (_), backticks (`), or hash symbols (#) for emphasis or headings.
+# - Do NOT wrap words in ** or __ to make them bold.
+# - For a heading, just write the phrase on its own line followed by a colon (e.g. "Key differences:").
+# - For lists, start each item on a new line beginning with "- " (a hyphen and a space) and nothing else.
+# - Keep sentences readable and avoid any special formatting characters.
 
 Use the following context to answer the question.
 
