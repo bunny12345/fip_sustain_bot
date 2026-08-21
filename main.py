@@ -31,8 +31,8 @@ INDEX_S3_BUCKET = os.getenv("INDEX_S3_BUCKET") or "faissindexingfip"
 # Each key can be overridden with an env var DOCUMENT_S3_KEY_<CODE> (e.g. DOCUMENT_S3_KEY_RO).
 LANGUAGES = {
     "en": "ESE Course_ENGLISH content.pdf",
-    "ro": "ESE course_ROMANIAN content.pdf",
-    "pt": "ESE course_PORTUGUESE content.pdf",
+    "ro": "ESE Course_ROMANIAN content.pdf",
+    "pt": "ESE Course_PORTUGUESE content.pdf",
     "it": "ESE Course_ITALIAN content.pdf",
     "de": "ESE Course_GERMAN content.pdf",
 }
