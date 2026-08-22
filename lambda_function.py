@@ -203,7 +203,7 @@ def extract_focus_terms(question):
     for a in acronyms:
         focus.add(a.lower())
 
-    module_match = re.search(r"\b(module|unit)\s*(\d{1,2})\b", q)
+    module_match = re.search(r"\b(module|unit|cu)\s*(\d{1,2})\b", q)
     module_num = module_match.group(2) if module_match else None
     return sorted(focus), module_num, sorted(a.lower() for a in acronyms)
 
@@ -212,7 +212,7 @@ def doc_matches_module(doc, module_num):
     if not module_num:
         return True
     hay = f"{doc.page_content}\n{json.dumps(doc.metadata, ensure_ascii=True)}".lower()
-    return bool(re.search(rf"\b(module|unit)\s*{re.escape(module_num)}\b", hay))
+    return bool(re.search(rf"\b(module|unit|cu)\s*{re.escape(module_num)}\b", hay))
 
 
 def lexical_overlap_score(doc, focus_terms):
@@ -337,6 +337,13 @@ def lambda_handler(event, context):
 
             # Filter for explicit module if requested.
             filtered = [(d, s) for (d, s) in scored if doc_matches_module(d, module_num)]
+
+            # A module/unit was requested but not found in the initial pool (e.g. course
+            # labels it "CU4" rather than "Module 4"): run a targeted search to locate it.
+            if module_num and not filtered:
+                targeted = vectorstore.similarity_search_with_score(f"Module {module_num}", k=8)
+                filtered = [(d, s) for (d, s) in targeted if doc_matches_module(d, module_num)]
+
             candidates = filtered if filtered else scored
 
             # Re-rank using lexical overlap first, then semantic distance score.
